@@ -42,18 +42,19 @@ func newFuncMetric(metricName string, docString string, labels []string) *promet
 }
 
 func (e *Exporter) newCollector() *collector {
+	var defaultLabels = []string{"backend"};
 	return &collector{
 		exporter:           e,
-		up:                 newFuncMetric("up", "able to contact php-fpm", nil),
-		acceptedConn:       newFuncMetric("accepted_connections_total", "Total number of accepted connections", nil),
-		listenQueue:        newFuncMetric("listen_queue_connections", "Number of connections that have been initiated but not yet accepted", nil),
-		maxListenQueue:     newFuncMetric("listen_queue_max_connections", "Max number of connections the listen queue has reached since FPM start", nil),
-		listenQueueLength:  newFuncMetric("listen_queue_length_connections", "The length of the socket queue, dictating maximum number of pending connections", nil),
-		phpProcesses:       newFuncMetric("processes_total", "process count", []string{"state"}),
-		maxActiveProcesses: newFuncMetric("active_max_processes", "Maximum active process count", nil),
-		maxChildrenReached: newFuncMetric("max_children_reached_total", "Number of times the process limit has been reached", nil),
-		slowRequests:       newFuncMetric("slow_requests_total", "Number of requests that exceed request_slowlog_timeout", nil),
-		scrapeFailures:     newFuncMetric("scrape_failures_total", "Number of errors while scraping php_fpm", nil),
+		up:                 newFuncMetric("up", "able to contact php-fpm", defaultLabels),
+		acceptedConn:       newFuncMetric("accepted_connections_total", "Total number of accepted connections", defaultLabels),
+		listenQueue:        newFuncMetric("listen_queue_connections", "Number of connections that have been initiated but not yet accepted", defaultLabels),
+		maxListenQueue:     newFuncMetric("listen_queue_max_connections", "Max number of connections the listen queue has reached since FPM start", defaultLabels),
+		listenQueueLength:  newFuncMetric("listen_queue_length_connections", "The length of the socket queue, dictating maximum number of pending connections", defaultLabels),
+		phpProcesses:       newFuncMetric("processes_total", "process count", append(append([]string{}, defaultLabels...), "state")),
+		maxActiveProcesses: newFuncMetric("active_max_processes", "Maximum active process count", defaultLabels),
+		maxChildrenReached: newFuncMetric("max_children_reached_total", "Number of times the process limit has been reached", defaultLabels),
+		slowRequests:       newFuncMetric("slow_requests_total", "Number of requests that exceed request_slowlog_timeout", defaultLabels),
+		scrapeFailures:     newFuncMetric("scrape_failures_total", "Number of errors while scraping php_fpm", defaultLabels),
 	}
 }
 
@@ -143,17 +144,26 @@ func getDataHTTP(u *url.URL) ([]byte, error) {
 }
 
 func (c *collector) Collect(ch chan<- prometheus.Metric) {
-	up := 1.0
 	var (
 		body []byte
 		err  error
 	)
-
-	if c.exporter.fcgiEndpoint != nil && c.exporter.fcgiEndpoint.String() != "" {
-		body, err = getDataFastcgi(c.exporter.fcgiEndpoint)
+	if c.exporter.fcgiEndpoints != nil && len(c.exporter.fcgiEndpoints) > 0 {
+		for key, value := range c.exporter.fcgiEndpoints {
+			body, err = getDataFastcgi(value)
+			CollectBackend(c, ch, body, err, key);
+		}
 	} else {
-		body, err = getDataHTTP(c.exporter.endpoint)
+		for key, value := range c.exporter.endpoints {
+			body, err = getDataHTTP(value)
+			CollectBackend(c, ch, body, err, key);
+		}
 	}
+
+}
+
+func CollectBackend(c *collector, ch chan<- prometheus.Metric, body []byte, err  error, backend string) {
+	up := 1.0
 
 	if err != nil {
 		up = 0.0
@@ -164,12 +174,14 @@ func (c *collector) Collect(ch chan<- prometheus.Metric) {
 		c.up,
 		prometheus.GaugeValue,
 		up,
+		[]string{backend}...
 	)
 
 	ch <- prometheus.MustNewConstMetric(
 		c.scrapeFailures,
 		prometheus.CounterValue,
 		float64(c.failureCount),
+		[]string{backend}...
 	)
 
 	if up == 0.0 {
@@ -186,7 +198,7 @@ func (c *collector) Collect(ch chan<- prometheus.Metric) {
 
 		var desc *prometheus.Desc
 		var valueType prometheus.ValueType
-		labels := []string{}
+		labels := []string{backend}
 
 		switch key {
 		case "accepted conn":

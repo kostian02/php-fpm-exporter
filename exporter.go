@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -21,8 +22,8 @@ import (
 // Exporter handles serving the metrics
 type Exporter struct {
 	addr         string
-	endpoint     *url.URL
-	fcgiEndpoint *url.URL
+	endpoints     map[string]*url.URL
+	fcgiEndpoints map[string]*url.URL
 	logger       *zap.Logger
 }
 
@@ -49,9 +50,11 @@ func New(options ...OptionsFunc) (*Exporter, error) {
 		e.logger = l
 	}
 
-	if e.endpoint == nil && e.fcgiEndpoint == nil {
+	if e.endpoints == nil && e.fcgiEndpoints == nil {
 		u, _ := url.Parse("http://localhost:9000/status")
-		e.endpoint = u
+		var m = make(map[string]*url.URL)
+		e.endpoints = m
+		e.endpoints[u.Host] = u;
 	}
 	return e, nil
 }
@@ -86,11 +89,16 @@ func SetEndpoint(rawurl string) func(*Exporter) error {
 		if rawurl == "" {
 			return nil
 		}
-		u, err := url.Parse(rawurl)
-		if err != nil {
-			return errors.Wrap(err, "failed to parse url")
+		var m = make(map[string]*url.URL)
+		e.endpoints = m
+		for _, rawBackendUrl := range strings.Split(rawurl, ",") {
+			u, err := url.Parse(rawBackendUrl)
+			if err != nil {
+				return errors.Wrap(err, "failed to parse url "+rawBackendUrl)
+			}
+			e.endpoints[u.Host] = u
 		}
-		e.endpoint = u
+
 		return nil
 	}
 }
@@ -103,11 +111,16 @@ func SetFastcgi(rawurl string) func(*Exporter) error {
 		if rawurl == "" {
 			return nil
 		}
-		u, err := url.Parse(rawurl)
-		if err != nil {
-			return errors.Wrap(err, "failed to parse url")
+		var m = make(map[string]*url.URL)
+		e.fcgiEndpoints = m
+		for _, rawBackendUrl := range strings.Split(rawurl, ",") {
+			u, err := url.Parse(rawBackendUrl)
+			if err != nil {
+				return errors.Wrap(err, "failed to parse url "+rawBackendUrl)
+			}
+			e.fcgiEndpoints[u.Host] = u
 		}
-		e.fcgiEndpoint = u
+
 		return nil
 	}
 }

@@ -4,7 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	exporter "github.com/bakins/php-fpm-exporter"
+	exporter "github.com/kostian02/php-fpm-exporter"
+	//"php-fpm-exporter/php-fpm-exporter"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 )
